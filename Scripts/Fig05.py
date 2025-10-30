@@ -1,82 +1,51 @@
 """
-Script to plot the uvp histogram data as a contour plot. Trying out pycharm.
+Figure 5: Contour plots of log-concentration per particle cluster over depth and time.
+
 """
 
-
 import os
-os.environ['PROJ_LIB'] = '/Users/joellehabib/anaconda3/pkgs/proj-8.2.1-hd69def0_0/share/proj'
-
-from matplotlib.ticker import FormatStrFormatter
 from pathlib import Path
-import matplotlib.dates as dates
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import warnings # these two lines to remove the annoying warnings from pandas
-warnings.simplefilter(action='ignore', category=FutureWarning)
-import itertools
-import matplotlib.cm as cm
-from scipy.interpolate import griddata
-from seawater import dpth
-import calendar
-import time
-from datetime import date,datetime
-from scipy.signal import savgol_filter
-import seaborn as sns
-import cmocean
 import matplotlib.dates as mdates
-from datetime import timedelta
+from matplotlib.ticker import FormatStrFormatter
+from scipy.interpolate import griddata
+# datetime not required directly; using pandas + mdates for conversions
 
-def contour_levels_func(min_contour_level, max_contour_level, levels):
-    """Function to define contour levels for contourf"""
-    distance_levels = max_contour_level / levels
-    contour_levels = np.arange(min_contour_level, max_contour_level, distance_levels)
-    return contour_levels
+def contour_levels_func(min_contour_level: float, max_contour_level: float, levels: int) -> np.ndarray:
+    """Return evenly spaced contour levels between min and max."""
+    step = (max_contour_level - min_contour_level) / levels
+    return np.arange(min_contour_level, max_contour_level, step)
 
 
 def gridding_func(pos_min_max, depth_min_max, pos_array, depth, param):
-    grid_method = "linear"  # choose the gridding method here
-    # method to do the regridding, can be nearest (for nearest neighbour) or linear
-
+    """Grid scattered points (pos_array, depth) onto a regular grid."""
     xi = np.linspace(min(pos_min_max), max(pos_min_max), 50)
     yi = np.linspace(min(depth_min_max), max(depth_min_max), 200)
-    zi = griddata((pos_array, depth), param, (xi[None, :], yi[:, None]), method=grid_method)
+    zi = griddata((pos_array, depth), param, (xi[None, :], yi[:, None]), method="nearest")
     return xi, yi, zi
 
 #defining the path
 
 Path_to_data = Path("~/GIT/TRATLEQ/Data/Float_data").expanduser()
 
-#open mask 
-###open the mask csv
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/Float_data/matrice_plot" )
+## Load base float/time/depth data (kept paths for backwards compatibility)
+os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/Float_data/matrice_plot")
+M158_lon = pd.read_csv("Time_float100.csv", sep=",")
+M158_depth = pd.read_csv("DEPTH_float100.csv", sep=",")
 
-M158_lon=pd.read_csv("Time_float100.csv", sep=',')
-M158_depth=pd.read_csv("DEPTH_float100.csv", sep=',')
-M158_Cflux=pd.read_csv("FluxC_float100.csv", sep=',')
-M158_Mip=pd.read_csv("Mip_float100.csv", sep=',')
-M158_Map=pd.read_csv("Map_float100.csv", sep=',')
-
-lon158=np.squeeze(np.array(M158_lon))
-depth158=np.squeeze(np.array(M158_depth))
-
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/DATA_PETER/Article/" )
-
-mask=pd.read_csv("mask100.csv")
-mask[mask==0]=np.nan
-## create the matrix for time and depth in case I use them 
-time_repeat=np.tile(lon158,(depth158.size,1))
-depth_repeat=np.transpose([depth158]*lon158.size)
+lon158 = np.squeeze(np.array(M158_lon))
+depth158 = np.squeeze(np.array(M158_depth))
 
 
 
 Path_to_data = Path("~/GIT/TRATLEQ/Data/Float_data/pierre").expanduser()
 
 
-#open the files where I have the different particle 
-# first I need to import the csv indiv_float that contains object id in order to compute the concentration of each cluster considered as species
-
-indiv = pd.read_csv(Path_to_data/"clusters_concentrations.csv")
+"""Open the file that contains object IDs to compute concentration per cluster"""
+indiv = pd.read_csv(Path_to_data / "clusters_concentrations.csv")
 
 # Compute abundance and biovolume per taxa and bin for either the rough or medium taxonomic definiton
 indiv_binned = indiv.groupby(['Cluster', 'depth', 'profile'], group_keys=False).agg(n = pd.NamedAgg(column = 'Cluster', aggfunc = 'count'),
@@ -93,9 +62,8 @@ indiv_binned = indiv.groupby(['Cluster', 'depth', 'profile'], group_keys=False).
 indiv_binned.reset_index(inplace = True) # to keep a column with exports_groups and depth_bin values
 
 Path_to_data = Path("~/GIT/TRATLEQ/Data/Float_data").expanduser()
-
-# and the sampled volume
-volumes = pd.read_csv(Path_to_data/'volumes_float.csv')
+# Sampled volume per profile/depth
+volumes = pd.read_csv(Path_to_data / "volumes_float.csv")
 
 volumes=volumes.rename(columns={"sample_id": "profile","depth_bin":"depth"})
 
@@ -104,9 +72,7 @@ obs = pd.merge(indiv_binned, volumes, how="left", on=['profile', 'depth'])
 
 #ADD  lon lat and date  
 Path_to_data = Path("~/GIT/TRATLEQ/Data/Float_data/").expanduser()
-
-
-profiles = pd.read_csv(Path_to_data/"list_of_profiles.csv")
+profiles = pd.read_csv(Path_to_data / "list_of_profiles.csv")
 
 full_final=pd.merge(obs, profiles, how="left", on=['profile'])
 
@@ -119,43 +85,33 @@ parameter_dic={"cluster 1":[0, 2],
                "cluster 4":[0, 0.3],
                "cluster 5":[0, 0.3]}
 
-flux1=[];flux2=[];flux3=[];stdflux1=[];flux2=[];flux1_std=[];flux2_std=[];flux3_std=[];
-
-# full_final = full_final.dropna()
-#Interpolation based on time 
-n=1
+## Interpolation based on time
+n = 1
 for parameter in parameter_dic:
-    df_1=full_final[(full_final["Cluster"]==parameter)]
-    df_1 = df_1.reset_index()
-    df_1.drop(['index'], inplace=True, axis=1)
-    df_1 = df_1[df_1['date'].notna()]
+    df_1 = full_final[full_final["Cluster"] == parameter].reset_index(drop=True)
+    df_1 = df_1[df_1["date"].notna()]
 
     
     # I extract the data
-    lon=np.array(df_1['lon']);
-    lat=np.array(df_1['lat'])
-    Date_Time=np.array(df_1['date'])
-    
-    #Date_Time.replace('.','')
+    lon = df_1["lon"].to_numpy()
+    lat = df_1["lat"].to_numpy()
+    date_vals = df_1["date"].astype(int).astype(str)
 
+    # Depth is provided positive downward; use negative for plotting with 0 at surface
+    pressure = -df_1["depth"].to_numpy()
 
-    pressure=-np.array(df_1['depth'])
-    #abund=np.log(np.array(df_1['conc']))
-   
-    abund=(np.array(df_1['conc']))
-    
-    abund[abund==0] = 1
-    abund=np.log(abund)
+    # Log-transform concentrations (avoid log(0))
+    abund = df_1["conc"].to_numpy()
+    abund[abund == 0] = 1
+    abund = np.log(abund)
    
 
  
    
-    Date_Num=np.r_[0:lon.size]
-    Date_Num2=np.r_[0:lon.size]
-    for i in Date_Num:
-       date_time_obj = datetime.strptime(str(int(Date_Time[i])), '%Y%m%d')
-       Date_Num[i]= dates.date2num(date_time_obj)
-       #Date_Num[i] = calendar.timegm(date_time_obj.timetuple())
+    # Vectorized datetime parsing and conversion to Matplotlib date numbers
+    dt = pd.to_datetime(date_vals, format="%Y%m%d", errors="coerce")
+    # Convert pandas datetime Series to Matplotlib date numbers without to_pydatetime()
+    Date_Num = dt.map(mdates.date2num).to_numpy()
     
     
     
@@ -164,33 +120,24 @@ for parameter in parameter_dic:
     
     
     # I define the x and y arrays for the plot
-    x_date = np.linspace(Date_Num.min(),Date_Num.max(),100)
-    y_pressure = np.linspace(pressure.min(),pressure.max(),200)
-    x_date_g,y_pressure_g=np.meshgrid(x_date,y_pressure)
+    x_date = np.linspace(np.nanmin(Date_Num), np.nanmax(Date_Num), 100)
+    y_pressure = np.linspace(np.nanmin(pressure), np.nanmax(pressure), 200)
+    x_date_g, y_pressure_g = np.meshgrid(x_date, y_pressure)
 
 
 
 
     # I interpolate
     # I interpolate
-    zi1 = griddata((Date_Num,pressure), abund, (x_date_g, y_pressure_g), method="nearest",rescale=True)
+    zi1 = griddata((Date_Num, pressure), abund, (x_date_g, y_pressure_g), method="nearest", rescale=True)
     
     #mean or median of the data to try detecting anomaly 
     #trying map
-    mean_zi=np.mean(zi1,1) #200 levels of depth 
-   
-    #value-mean to conduct anomaly 
-    ZI1= pd.DataFrame(zi1) 
-    New_value_PART=ZI1.sub(mean_zi,axis=0)
+    # Keep original field (non-anomaly) for plotting
+    ZI1 = pd.DataFrame(zi1)
     
-    
-   
-    x_date=np.squeeze(np.array(x_date))
-    x_date=x_date.astype(float)
-    
-    # Convert numeric dates to datetime objects
-    reference_date = datetime(1970, 1, 1)  # Choose your reference date
-    real_dates = [reference_date + timedelta(days=date) for date in x_date]
+    # Convert Matplotlib date numbers back to datetime for plotting
+    real_dates = mdates.num2date(x_date)
 
 
 
@@ -204,14 +151,11 @@ for parameter in parameter_dic:
     ax=fig.add_subplot(5,1,n)
     
     
-    jet = plt.get_cmap('BrBG')
-    p1 = plt.contourf(real_dates, y_pressure ,ZI1, contour_levels, cmap='viridis', alpha=1,extend='both')
-    # ax_2 = plot2 = plt.contourf(x_date, y_pressure, mask,levels=5, cmap=cm,alpha=0.3)
+    p1 = ax.contourf(real_dates, y_pressure, ZI1, contour_levels, cmap="viridis", alpha=1, extend="both")
     ax.set_ylim([-1000, 0])
-    plt.xticks(fontsize=7)
-    plt.yticks(fontsize=7)
-    plt.ylabel('Depth (m)')
-    cbar = fig.colorbar(p1)
+    ax.tick_params(axis='both', labelsize=7)
+    ax.set_ylabel('Depth (m)')
+    cbar = fig.colorbar(p1, ax=ax)
     cbar.ax.set_ylabel('Log', fontsize=8)
     cbar.ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))  # Set format to one decimal place
     #plt.title(parameter, fontsize=8)
@@ -219,11 +163,6 @@ for parameter in parameter_dic:
 
   # Add subplot labels outside the plots
     ax.annotate(labels[n-1], xy=(-0.1, 1), xycoords='axes fraction', fontsize=12, fontweight='bold', va='top', ha='right')
-    
-    
-    nxticks=10
-    xticks=np.linspace(Date_Num.min(),Date_Num.max(),nxticks)
-    xticklabels=[]
     
     
     if n!=5:
@@ -237,10 +176,13 @@ for parameter in parameter_dic:
     n+=1
 
 
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/" )
-fig_name_pdf = ("Fig6" + ".png")
-plt.savefig(fig_name_pdf, dpi=300,bbox_inches="tight")
-    
-plt.close()
+os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/")
+fig_name_pdf = ("Fig5" + ".png")
+plt.tight_layout(pad=1.0)
+plt.savefig(fig_name_pdf, dpi=300, bbox_inches="tight")
+print(f"Figure saved to: {os.path.abspath(fig_name_pdf)}")
+
+# Display the figure on screen
+plt.show()
 
 
