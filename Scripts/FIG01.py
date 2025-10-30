@@ -5,401 +5,173 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from datetime import timedelta
 import xarray as xr
 import cmocean
 import matplotlib.dates as mdates
-from pathlib import Path
 
-
-
-import calendar
-import time
-from datetime import date,datetime
-
-
-cm=cmocean.cm.balance
+cm = cmocean.cm.balance
 
 def contour_levels_func(min_contour_level, max_contour_level, levels):
     """Function to define contour levels for contourf"""
-    distance_levels = max_contour_level / levels
-    contour_levels = np.arange(min_contour_level, max_contour_level, distance_levels)
-    return contour_levels
-
-def nonlinear_colormap():
-    import pylab as pyl
-    #import numpy as np
-    levels1 = [0, 1, 2]
-
-    ####################################################################
-    ###                      non linear colormap                     ###
-    ####################################################################
-
-    """
-    nlcmap - a nonlinear cmap from specified levels
-
-    Copyright (c) 2006-2007, Robert Hetland <hetland@tamu.edu>
-    Release under MIT license.
-
-    Some hacks added 2012 noted in code (@MRR)
-    """
-
-    from matplotlib.colors import LinearSegmentedColormap
+    return np.linspace(min_contour_level, max_contour_level, levels)
 
 
-    class nlcmap(LinearSegmentedColormap):
-        """Nonlinear colormap.
-           Needs the input of a linear colormap e.g. pylab.cm.jet
-           and a list of levels e.g. [0,1,2,3,6]
-           in order to change the interpolation, change the levels vector,
-           e.g ad 20, 50 to make it more unlinear."""
-        import numpy as np
-        name = 'nlcmap'
-
-        def __init__(self, cmap, levels):
-            import numpy as np
-            self.cmap = cmap
-            # @MRR: Need to add N for backend
-            self.N = cmap.N
-            self.monochrome = self.cmap.monochrome
-            self.levels = np.asarray(levels, dtype='float64')
-            self._x = self.levels / self.levels.max()
-            self._y = np.linspace(0.0, 1.0, len(self.levels))
-
-        #@MRR Need to add **kw for 'bytes'
-        def __call__(self, xi, alpha=1.0, **kw):
-            import numpy as np
-            """docstring for fname"""
-            # @MRR: Appears broken?
-            # It appears something's wrong with the
-            # dimensionality of a calculation intermediate
-            #yi = stineman_interp(xi, self._x, self._y)
-            yi = np.interp(xi, self._x, self._y)
-            return self.cmap(yi, alpha)
-
-
-    cmap_nonlin = nlcmap(pyl.cm.CMRmap, levels1)
-    return cmap_nonlin
-
-
-
-cm1 = nonlinear_colormap()
+def matlab_to_datetime(matlab_times):
+    """Vectorized conversion of MATLAB datenum to Python datetime"""
+    # MATLAB datenum: days since January 0, 0000
+    # Python datetime: days since January 1, 1970 (Unix epoch)
+    # The offset is 719529 days (difference between MATLAB and Unix epoch)
+    days_since_epoch = matlab_times - 719529
+    return pd.to_datetime(days_since_epoch, unit='D', origin='unix')
            
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/DATA_PETER/" )
+os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/DATA_PETER/")
 
-############trajectory files#######
+# Load trajectory files
 df_158 = pd.read_csv("traj_M158.csv", sep=',')
 df_181 = pd.read_csv("traj_M181.csv", sep=',')
 df_float22 = pd.read_csv("traj_float2022.csv", sep=',')
 
+# Vectorized datetime conversion (much faster than loops)
+date_158 = matlab_to_datetime(df_158.Time.values)
+date_181 = matlab_to_datetime(df_181.Time.values)
+date_float22 = matlab_to_datetime(df_float22.Time.values)
 
-
-date_158=[]
-date_181=[]
-date_float22=[]
-
-for k in range(0,df_158.Lon.size):
-    python_date = datetime.fromordinal(int(df_158.Time[k])) + timedelta(days=df_158.Time[k]%1) - timedelta(days = 366)
-    date_158.append(python_date)
-    
-for k in range(0,df_181.Lon.size):
-    python_date = datetime.fromordinal(int(df_181.Time[k])) + timedelta(days=df_181.Time[k]%1) - timedelta(days = 366)
-    date_181.append(python_date)
-
-for k in range(0,df_float22.Lon.size):
-    python_date = datetime.fromordinal(int(df_float22.Time[k])) + timedelta(days=df_float22.Time[k]%1) - timedelta(days = 366)
-    date_float22.append(python_date)
-
-###############################
-######1- SST data #######
-###############################
-
+# Load SST data
 dataset = xr.open_dataset('OI_SST_TROPATL.nc')
 
-#I extract lon/lat
 LAT_SST = dataset.variables['LAT'].values
 LON_SST = dataset.variables['LON'].values
-SST_TROPATL = np.squeeze(dataset.variables['SST_TROPATL'].values)
-SST_TROPATL_FILTERED=np.squeeze(dataset.variables['SST_TROPATL_FILTERED'].values)
-TIME_SST=dataset.variables['TIME'].values
+SST_TROPATL = dataset.variables['SST_TROPATL'].values
+SST_TROPATL_FILTERED = dataset.variables['SST_TROPATL_FILTERED'].values
+TIME_SST = dataset.variables['TIME'].values
 
+# Vectorized computation of spatial means (much faster than loops)
+# Filter latitude range 28:35 and compute mean along latitude axis
+# Check array dimensions and adjust indexing accordingly
+if SST_TROPATL.ndim == 3:
+    mean_sst_tropatl = np.nanmean(SST_TROPATL[:, 28:35, :], axis=1)
+    mean_sst_tropatl_filtered = np.nanmean(SST_TROPATL_FILTERED[:, 28:35, :], axis=1)
+elif SST_TROPATL.ndim == 2:
+    mean_sst_tropatl = SST_TROPATL
+    mean_sst_tropatl_filtered = SST_TROPATL_FILTERED
+else:
+    raise ValueError(f"Unexpected SST array dimensions: {SST_TROPATL.shape}")
 
-#put a loop to open each SST_TROPATL, and squeeze bcs 3D variable
-#take lon, lat, time
-#should maybe either conduct a spatial mean between -8 and 8 
-# or more restrained 
+# Vectorized datetime conversion
+date_sst = matlab_to_datetime(TIME_SST)
 
+# Define export event dates
+date_list1 = [datetime(2021, 8, 8), datetime(2021, 9, 8)]
+date_list2 = [datetime(2021, 12, 13), datetime(2022, 1, 26)]
 
-mean_sst_tropatl_filtered=np.zeros((TIME_SST.size,LON_SST.size))
-mean_sst_tropatl=np.zeros((TIME_SST.size,LON_SST.size))
-
-#transform matlab to python datetime
-date_sst=[]
-
-
-for k in range(0,TIME_SST.size):
-    #I filter the data based on the lat 
-    #option 1 conduct the mean between -8 and 8 
-   # sst_tropatl=np.squeeze(SST_TROPATL[k,:,:])
-   # sst_tropatl_filtered=np.squeeze(SST_TROPATL_FILTERED[k,:,:])
-    
-    sst_tropatl=np.squeeze(SST_TROPATL[k,28:35,:])
-    sst_tropatl_filtered=np.squeeze(SST_TROPATL_FILTERED[k,28:35,:])
-    
-    mean_sst_tropatl[k]=np.nanmean(sst_tropatl,axis=0) #for mean based on row= axis=1
-    mean_sst_tropatl_filtered[k]=np.nanmean(sst_tropatl_filtered,axis=0) #for mean based on row= axis=1
-    python_date = datetime.fromordinal(int(TIME_SST[k])) + timedelta(days=TIME_SST[k]%1) - timedelta(days = 366)
-    date_sst.append(python_date)
-    
-    
-#dates of the beginning and end of the export 
-#lon158_2[10 lon158_2[22] 2021-8-8 2021-9-8 
-
-#lon158_2[60  lon158_2[77] 2021-12-13 2022-1-26
-
-
-
-date_list1 = [
-    datetime.strptime("2021-8-8", "%Y-%m-%d"),
-    datetime.strptime("2021-9-8", "%Y-%m-%d")]
-
-
-
-date_list2 = [
-    datetime.strptime("2021-12-13", "%Y-%m-%d"),
-    datetime.strptime("2022-1-26", "%Y-%m-%d")]
-    
-##################
-###CHLA
-###################
-    
+# Load CHLA data
 dataset = xr.open_dataset('CHLA_TROPATL.nc')
 
-#I extract lon/lat
-LAT_SST = dataset.variables['LAT'].values
+LAT_CHL = dataset.variables['LAT'].values
 LON_CHL = dataset.variables['LON'].values
-CHL_TROPATL = np.squeeze(dataset.variables['CHLA_TROPATL'].values)
-CHL_TROPATL_FILTERED=np.squeeze(dataset.variables['CHLA_TROPATL_FILTERED'].values)
-TIME_SST=dataset.variables['TIME'].values
+CHL_TROPATL = dataset.variables['CHLA_TROPATL'].values
+CHL_TROPATL_FILTERED = dataset.variables['CHLA_TROPATL_FILTERED'].values
+TIME_CHL = dataset.variables['TIME'].values
 
-#put a loop to open each SST_TROPATL, and squeeze bcs 3D variable
-#take lon, lat, time
-#should maybe either conduct a spatial mean between -8 and 8 
-# or more restrained 
+# Vectorized computation of spatial means (latitude range 102:139 for 1N to 1S)
+# Check array dimensions and adjust indexing accordingly
+if CHL_TROPATL.ndim == 3:
+    mean_chl_tropatl = np.nanmean(CHL_TROPATL[:, 102:139, :], axis=1)
+    mean_chl_tropatl_filtered = np.nanmean(CHL_TROPATL_FILTERED[:, 102:139, :], axis=1)
+elif CHL_TROPATL.ndim == 2:
+    mean_chl_tropatl = CHL_TROPATL
+    mean_chl_tropatl_filtered = CHL_TROPATL_FILTERED
+else:
+    raise ValueError(f"Unexpected CHL array dimensions: {CHL_TROPATL.shape}")
 
-
-mean_chl_tropatl_filtered=np.zeros((TIME_SST.size,LON_CHL.size))
-mean_chl_tropatl=np.zeros((TIME_SST.size,LON_CHL.size))
-#transform matlab to python datetime
-date_chl=[]
-
-
-for k in range(0,TIME_SST.size):
-    #I filter the data based on the lat 
-    #option 1 conduct the mean between -5 and 5 
-    # chl_tropatl=np.squeeze(CHL_TROPATL[k,:,:])
-    # chl_tropatl_filtered=np.squeeze(CHL_TROPATL_FILTERED[k,:,:])
-    
-    chl_tropatl=np.squeeze(CHL_TROPATL[k,102:139,:])     #for 1N and 1S
-    chl_tropatl_filtered=np.squeeze(CHL_TROPATL_FILTERED[k,102:139,:])
-    
-    mean_chl_tropatl[k]=np.nanmean(chl_tropatl,axis=0) #for mean based on row= axis=1
-    mean_chl_tropatl_filtered[k]=np.nanmean(chl_tropatl_filtered,axis=0) #for mean based on row= axis=1
-    python_date = datetime.fromordinal(int(TIME_SST[k])) + timedelta(days=TIME_SST[k]%1) - timedelta(days = 366)
-    date_chl.append(python_date)
+# Vectorized datetime conversion
+date_chl = matlab_to_datetime(TIME_CHL)
 
 
-###############################
-###### #######
-###############################
-    
-jet = plt.get_cmap('Spectral')
 
-   
-    
-#add contouring level 
-#add contouring level 
-levels = 20
-min_contour_level = -0.38
-max_contour_level = 0.38
-contour_levels = contour_levels_func(min_contour_level, max_contour_level, levels)
-
-
-width, height = 0.8, 0.7
-set_ylim_lower, set_ylim_upper = datetime(2021, 7, 1, 0, 0),datetime(2022, 4, 1, 0, 0)
-fig = plt.figure(1, figsize=(3,5))
-ax=fig.add_subplot(412)
-p1 = plt.contourf(date_sst, LON_SST, mean_sst_tropatl_filtered.transpose(),contour_levels, cmap=cm, alpha=1,vmin=-0.38, vmax=0.38, extend='both')
-p4=plt.plot(date_float22,df_float22.Lon, color='black')
-
-ax.set_ylim([-40, 10])
-ax.set_xlim([set_ylim_lower, set_ylim_upper])
-
-loc = mdates.MonthLocator(interval=1)
-ax.xaxis.set_major_locator(loc)
-fmt = mdates.DateFormatter('%b\n%y')
-ax.xaxis.set_major_formatter(fmt)
-plt.xticks(fontsize=7)
-plt.yticks(fontsize=7)
-ax.text(-0.2, 1.15, '(b)', transform=ax.transAxes,fontsize=7, fontweight='bold', va='top', ha='right')
-ax.set_ylabel('Longitude (°)', fontsize=7)
-ax.get_xaxis().set_ticklabels([])
-
-#colorbar
-cbar = plt.colorbar(p1)
-cbar.ax.set_ylabel('SST anomaly(°C)', fontsize=7)
-cbar.ax.tick_params(labelsize=7) 
-cbar.ax.locator_params(nbins=5)
-
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-    
+# Helper function to reduce plotting code repetition
+def setup_subplot(ax, hide_xticklabels=True):
+    """Configure common subplot settings"""
+    ax.set_ylim([-40, 10])
+    ax.set_xlim([datetime(2021, 7, 1), datetime(2022, 4, 1)])
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b\n%y'))
+    ax.tick_params(axis='both', labelsize=7)
+    ax.set_ylabel('Longitude (°)', fontsize=7)
+    if hide_xticklabels:
+        ax.set_xticklabels([])
+    return ax
 
 
-jet = plt.get_cmap('Spectral_r')
+# Create figure with all subplots
+fig, axes = plt.subplots(4, 1, figsize=(3, 5), sharex=True)
 
-
-    
-#add contouring level 
-#add contouring level 
-levels = 100
-min_contour_level =22
-max_contour_level = 30.5
-contour_levels = contour_levels_func(min_contour_level, max_contour_level, levels)
-
-
-width, height = 0.8, 0.7
-set_ylim_lower, set_ylim_upper = datetime(2021, 7, 1, 0, 0),datetime(2022, 4, 1, 0, 0)
-fig = plt.figure(1, figsize=(3,5))
-ax=fig.add_subplot(411)
-p1 = plt.contourf(date_sst, LON_SST, mean_sst_tropatl.transpose(),contour_levels, cmap=jet, alpha=1,vmin=22, vmax=30.5, extend='both')
-p4=plt.plot(date_float22,df_float22.Lon, color='black')
-
-ax.set_ylim([-40, 10])
-ax.set_xlim([set_ylim_lower, set_ylim_upper])
-
-loc = mdates.MonthLocator(interval=1)
-ax.xaxis.set_major_locator(loc)
-fmt = mdates.DateFormatter('%b\n%y')
-ax.xaxis.set_major_formatter(fmt)
-plt.xticks(fontsize=7)
-plt.yticks(fontsize=7)
-ax.text(-0.2, 1.15, '(a)', transform=ax.transAxes,fontsize=7, fontweight='bold', va='top', ha='right')
-ax.set_ylabel('Longitude (°)', fontsize=7)
-ax.get_xaxis().set_ticklabels([])
-
-#colorbar
-cbar = plt.colorbar(p1)
+# (a) SST absolute values
+contour_levels = contour_levels_func(22, 30.5, 100)
+p1 = axes[0].contourf(date_sst, LON_SST, mean_sst_tropatl.T, 
+                      contour_levels, cmap='Spectral_r', vmin=22, vmax=30.5, extend='both')
+axes[0].plot(date_float22, df_float22.Lon, color='black', linewidth=0.8)
+setup_subplot(axes[0])
+axes[0].text(-0.2, 1.15, '(a)', transform=axes[0].transAxes, 
+            fontsize=7, fontweight='bold', va='top', ha='right')
+cbar = plt.colorbar(p1, ax=axes[0])
 cbar.ax.set_ylabel('SST (°C)', fontsize=7)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
 cbar.ax.locator_params(nbins=5)
 
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-    
+# (b) SST anomaly
+contour_levels = contour_levels_func(-0.38, 0.38, 20)
+p2 = axes[1].contourf(date_sst, LON_SST, mean_sst_tropatl_filtered.T,
+                      contour_levels, cmap=cm, vmin=-0.38, vmax=0.38, extend='both')
+axes[1].plot(date_float22, df_float22.Lon, color='black', linewidth=0.8)
+setup_subplot(axes[1])
+axes[1].text(-0.2, 1.15, '(b)', transform=axes[1].transAxes,
+            fontsize=7, fontweight='bold', va='top', ha='right')
+cbar = plt.colorbar(p2, ax=axes[1])
+cbar.ax.set_ylabel('SST anomaly (°C)', fontsize=7)
+cbar.ax.tick_params(labelsize=7)
+cbar.ax.locator_params(nbins=5)
 
-
-#add contouring level 
-levels = 20
-min_contour_level = 0
-max_contour_level = 1
-contour_levels = contour_levels_func(min_contour_level, max_contour_level, levels)
-
-
-jet=cmocean.cm.algae
-
-width, height = 0.8, 0.7
-set_ylim_lower, set_ylim_upper = datetime(2021, 7, 1, 0, 0),datetime(2022, 4, 1, 0, 0)
-ax=fig.add_subplot(413)
-p1 = plt.contourf(date_chl, LON_CHL, mean_chl_tropatl.transpose(),contour_levels, cmap=jet, alpha=1,vmin=0, vmax=1,  extend='both')
-p4=plt.plot(date_float22,df_float22.Lon , color='black')
-
-ax.set_ylim([-40, 10])
-ax.set_xlim([set_ylim_lower, set_ylim_upper])
-
-loc = mdates.MonthLocator(interval=1)
-ax.xaxis.set_major_locator(loc)
-fmt = mdates.DateFormatter('%b\n%Y')
-ax.xaxis.set_major_formatter(fmt)
-ax.get_xaxis().set_ticklabels([])
-
-plt.xticks(fontsize=7)
-plt.yticks(fontsize=7)
-ax.text(-0.2, 1.15, '(c)', transform=ax.transAxes,fontsize=7, fontweight='bold', va='top', ha='right')
-ax.set_ylabel('Longitude (°)', fontsize=7)
-
-#colorbar
-cbar = plt.colorbar(p1)
+# (c) Chl-a absolute values
+contour_levels = contour_levels_func(0, 1, 20)
+p3 = axes[2].contourf(date_chl, LON_CHL, mean_chl_tropatl.T,
+                      contour_levels, cmap=cmocean.cm.algae, vmin=0, vmax=1, extend='both')
+axes[2].plot(date_float22, df_float22.Lon, color='black', linewidth=0.8)
+setup_subplot(axes[2])
+axes[2].text(-0.2, 1.15, '(c)', transform=axes[2].transAxes,
+            fontsize=7, fontweight='bold', va='top', ha='right')
+cbar = plt.colorbar(p3, ax=axes[2])
 cbar.ax.set_ylabel('Chl-a \n (mg m$^{-3}$)', fontsize=7)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
-ax.get_xaxis().set_ticklabels([])
 
-
-y_min, y_max = ax.get_ylim()
-
-# Calculate ymin and ymax fractions
+# Add vertical lines for export events
+y_min, y_max = axes[2].get_ylim()
 ymin_fraction = (-28 - y_min) / (y_max - y_min)
 ymax_fraction = (0 - y_min) / (y_max - y_min)
+for date in date_list1:
+    axes[2].axvline(x=date, color='r', linestyle='--', linewidth=1, 
+                   ymin=ymin_fraction, ymax=ymax_fraction)
+for date in date_list2:
+    axes[2].axvline(x=date, color='b', linestyle='--', linewidth=1,
+                   ymin=ymin_fraction, ymax=ymax_fraction)
 
-for date22 in date_list1:
-    ax.axvline(x=date22, color='r', linestyle='--', linewidth=1, ymin=ymin_fraction, ymax=ymax_fraction)
-    
-for date22 in date_list2:
-    ax.axvline(x=date22, color='b', linestyle='--', linewidth=1, ymin=ymin_fraction, ymax=ymax_fraction)
-
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-    
-    
-#add contouring level 
-levels = 20
-min_contour_level = -0.1
-max_contour_level = 0.1
-contour_levels = contour_levels_func(min_contour_level, max_contour_level, levels)
-
-
-jet = plt.get_cmap('BrBG')
-
-width, height = 0.8, 0.7
-set_ylim_lower, set_ylim_upper = datetime(2021, 7, 1, 0, 0),datetime(2022, 4, 1, 0, 0)
-ax=fig.add_subplot(414)
-p1 = plt.contourf(date_chl, LON_CHL, mean_chl_tropatl_filtered.transpose(),contour_levels, cmap=jet, alpha=1,vmin=-0.1, vmax=0.1,  extend='both')
-p4=plt.plot(date_float22,df_float22.Lon , color='black')
-
-ax.set_ylim([-40, 10])
-ax.set_xlim([set_ylim_lower, set_ylim_upper])
-
-loc = mdates.MonthLocator(interval=1)
-ax.xaxis.set_major_locator(loc)
-fmt = mdates.DateFormatter('%b\n%y')
-ax.xaxis.set_major_formatter(fmt)
-
-
-plt.xticks(fontsize=7)
-plt.yticks(fontsize=7)
-ax.text(-0.2, 1.15, '(d)', transform=ax.transAxes,fontsize=7, fontweight='bold', va='top', ha='right')
-ax.set_ylabel('Longitude (°)', fontsize=7)
-
-#colorbar
-cbar = plt.colorbar(p1)
+# (d) Chl-a anomaly
+contour_levels = contour_levels_func(-0.1, 0.1, 20)
+p4 = axes[3].contourf(date_chl, LON_CHL, mean_chl_tropatl_filtered.T,
+                      contour_levels, cmap='BrBG', vmin=-0.1, vmax=0.1, extend='both')
+axes[3].plot(date_float22, df_float22.Lon, color='black', linewidth=0.8)
+setup_subplot(axes[3], hide_xticklabels=False)
+axes[3].text(-0.2, 1.15, '(d)', transform=axes[3].transAxes,
+            fontsize=7, fontweight='bold', va='top', ha='right')
+cbar = plt.colorbar(p4, ax=axes[3])
 cbar.ax.set_ylabel('Chl-a anomaly \n (mg m$^{-3}$)', fontsize=7)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
 
+plt.tight_layout()
 
-
-plt.xticks(fontsize=7)
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-    
-
-    
-
-    
-
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float//new_version_052024/" )
-fig_name_pdf = ("Fig01" + ".png")
-plt.savefig(fig_name_pdf,dpi=300,bbox_inches="tight")
+# Save figure
+os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float//new_version_052024/")
+fig_name_pdf = "Fig01.png"
+# plt.savefig(fig_name_pdf, dpi=300, bbox_inches="tight")

@@ -1,107 +1,26 @@
-#I will use pierre data
 import os
 os.environ['PROJ_LIB'] = '/Users/joellehabib/anaconda3/pkgs/proj-8.2.1-hd69def0_0/share/proj'
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from datetime import timedelta
-import xarray as xr
+from datetime import datetime, timedelta
 import cmocean
 from scipy.interpolate import griddata
 import matplotlib.dates as mdates
 from pathlib import Path
 from seawater import dpth
-import calendar
-import time
-from datetime import date,datetime
 import matplotlib.dates as dates
-
 import gsw
-from oceanpy import mixed_layer_depth
-
 from scipy.signal import savgol_filter
 
-
-cmpa=cmocean.cm.algae
-cmoxy=cmocean.cm.balance
-
-def nonlinear_colormap():
-    import pylab as pyl
-    #import numpy as np
-    levels1 = [0, 1, 2]
-
-    ####################################################################
-    ###                      non linear colormap                     ###
-    ####################################################################
-
-    """
-    nlcmap - a nonlinear cmap from specified levels
-
-    Copyright (c) 2006-2007, Robert Hetland <hetland@tamu.edu>
-    Release under MIT license.
-
-    Some hacks added 2012 noted in code (@MRR)
-    """
-
-    from matplotlib.colors import LinearSegmentedColormap
-
-
-    class nlcmap(LinearSegmentedColormap):
-        """Nonlinear colormap.
-           Needs the input of a linear colormap e.g. pylab.cm.jet
-           and a list of levels e.g. [0,1,2,3,6]
-           in order to change the interpolation, change the levels vector,
-           e.g ad 20, 50 to make it more unlinear."""
-        import numpy as np
-        name = 'nlcmap'
-
-        def __init__(self, cmap, levels):
-            import numpy as np
-            self.cmap = cmap
-            # @MRR: Need to add N for backend
-            self.N = cmap.N
-            self.monochrome = self.cmap.monochrome
-            self.levels = np.asarray(levels, dtype='float64')
-            self._x = self.levels / self.levels.max()
-            self._y = np.linspace(0.0, 1.0, len(self.levels))
-
-        #@MRR Need to add **kw for 'bytes'
-        def __call__(self, xi, alpha=1.0, **kw):
-            import numpy as np
-            """docstring for fname"""
-            # @MRR: Appears broken?
-            # It appears something's wrong with the
-            # dimensionality of a calculation intermediate
-            #yi = stineman_interp(xi, self._x, self._y)
-            yi = np.interp(xi, self._x, self._y)
-            return self.cmap(yi, alpha)
-
-
-    cmap_nonlin = nlcmap(pyl.cm.CMRmap, levels1)
-    return cmap_nonlin
-
-
-
-cm = nonlinear_colormap()
+cmpa = cmocean.cm.algae
+cmoxy = cmocean.cm.balance
 
 
 def contour_levels_func(min_contour_level, max_contour_level, levels):
     """Function to define contour levels for contourf"""
-    distance_levels = max_contour_level / levels
-    contour_levels = np.arange(min_contour_level, max_contour_level, distance_levels)
-    return contour_levels
-
-
-def gridding_func(pos_min_max, depth_min_max, pos_array, depth, param):
-    grid_method = "linear"  # choose the gridding method here
-    # method to do the regridding, can be nearest (for nearest neighbour) or linear
-
-    xi = np.linspace(min(pos_min_max), max(pos_min_max), 5000)
-    yi = np.linspace(min(depth_min_max), max(depth_min_max), 200)
-    zi = griddata((pos_array, depth), param, (xi[None, :], yi[:, None]), method=grid_method)
-    return xi, yi, zi
+    return np.linspace(min_contour_level, max_contour_level, levels)
 
 Path_to_data = Path("~/GIT/TRATLEQ/Data/Float_data/").expanduser()
 
@@ -137,17 +56,8 @@ bbp=np.array(df_['bbp POC [mgC/m3]'])
 oxy=np.array(df_['Doxy [micromol/kg]'])
 
 
-# # I convert the dates to float values (in seconds from 1970 1 1)
-Date_Num=np.r_[0:lon.size]
-# for i in Date_Num:
-#     date_time_obj = datetime.strptime(Date_Time[i], '%Y-%m-%dT%H:%M:%SZ')
-#     Date_Num[i] = calendar.timegm(date_time_obj.timetuple())
-#     #datetime.utcfromtimestamp(Date_Num[i])
-
-
-for i in Date_Num:
-    date_time_obj = datetime.strptime(Date_Time[i], '%Y-%m-%dT%H:%M:%S')
-    Date_Num[i]= dates.date2num(date_time_obj)
+# Convert dates to matplotlib date numbers (vectorized)
+Date_Num = dates.datestr2num(Date_Time)
 
 CHL_filtered=np.array([]);pressure_chl=np.array([]);Date_Num_chl=np.array([])
 SAL_filtered=np.array([]);pressure_sal=np.array([]);Date_Num_sal=np.array([])
@@ -339,12 +249,9 @@ mld_time['numeric_representation'] = dates.date2num(mld_time['datetime_column'])
 float_final=mld_time['numeric_representation']
 #stop
 
-#date I need to remove 2022-01-05  -- 2022-01-11date_object.timestamp()
-
-date_time_obj = datetime.strptime('2022-01-05', '%Y-%m-%d')
-date_min= dates.date2num(date_time_obj)
-date_time_obj = datetime.strptime('2022-01-11', '%Y-%m-%d')
-date_max = dates.date2num(date_time_obj)
+# Date range to remove (2022-01-05 to 2022-01-11)
+date_min = dates.date2num(datetime(2022, 1, 5))
+date_max = dates.date2num(datetime(2022, 1, 11))
 
 
 
@@ -627,7 +534,8 @@ plt.xticks(rotation=90,fontsize=7)
 
 
 
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/" )
-fig_name_pdf = ("Fig02" + ".png")
-plt.savefig(fig_name_pdf,dpi=300,bbox_inches="tight")
+os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/")
+fig_name_pdf = "Fig02.png"
+# plt.savefig(fig_name_pdf, dpi=300, bbox_inches="tight")
+plt.show()
 
