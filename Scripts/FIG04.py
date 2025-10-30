@@ -1,134 +1,92 @@
-#Calculate flux for the 2 events and between the events
+"""Calculate flux for the 2 events and between the events"""
 
-import os
-os.environ['PROJ_LIB'] = '/Users/joellehabib/anaconda3/pkgs/proj-8.2.1-hd69def0_0/share/proj'
-
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import matplotlib.dates as mdates
+from scipy.stats import f_oneway
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+from sklearn.linear_model import LinearRegression
 
 plt.rcParams.update(plt.rcParamsDefault)
-### open the float interpolation data
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/Float_data/matrice_plot" )
 
-M158_lon=pd.read_csv("Time_float100.csv", sep=',')
-M158_depth=pd.read_csv("DEPTH_float100.csv", sep=',')
-M158_Cflux=pd.read_csv("FluxC_float100.csv", sep=',')
-# M158_Cflux=pd.read_csv("Mip_float.csv", sep=',')
-# M158_Cflux=pd.read_csv("Map_float.csv", sep=',')
+# Define base paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "Data"
+PLOTS_DIR = BASE_DIR / "Plots"
 
+# Load float interpolation data
+time_data = pd.read_csv(DATA_DIR / "Time_float100.csv")
+depth_data = pd.read_csv(DATA_DIR / "DEPTH_float100.csv")
+flux_data = pd.read_csv(DATA_DIR / "FluxC_float100.csv")
+mask_data = pd.read_csv(DATA_DIR / "mask_final.csv")
 
-
-lon158_2=np.squeeze(np.array(M158_lon))
-depth158=np.squeeze(np.array(M158_depth))
-
-lon158=mdates.num2date(lon158_2)
-
-
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Data/DATA_PETER/Article/" )
-
-###open the mask csv
-mask=pd.read_csv("mask_final.csv")
-
-#open file of mld 
-mld=pd.read_csv("mld.csv", sep=',')
-mld_time=pd.read_csv("mld_time.csv", sep=',')
-
-## create the matrix for time and depth in case I use them 
-time_repeat=np.tile(lon158_2,(depth158.size,1))
-depth_repeat=np.transpose([depth158]*lon158_2.size)
+# Convert to numpy arrays
+time_array = np.squeeze(np.array(time_data))
+depth_array = np.squeeze(np.array(depth_data))
+time_dates = mdates.num2date(time_array)
 
 
-#profile event 1
-#estimate event number 1
-FLUX_event1=M158_Cflux.copy(deep=True)
-FLUX_event1[mask!=1]=np.nan
+# Define bin size for depth averaging (20m)
+BIN_SIZE = 20
 
-# Define the bin size (20m)
-bin_size = 20
+# Helper function to calculate flux statistics by depth
+def calculate_flux_stats(flux_df, mask_df, event_number):
+    """Calculate mean and std of flux by depth bins for a specific event."""
+    flux_event = flux_df.copy(deep=True)
+    if event_number is not None:
+        flux_event[mask_df != event_number] = np.nan
+    
+    # Round depth values to nearest bin
+    rounded_depth = np.round(depth_array / BIN_SIZE) * BIN_SIZE
+    flux_event['Rounded_Depth'] = rounded_depth
+    
+    # Calculate mean by depth groups
+    mean_flux_by_depth = flux_event.groupby('Rounded_Depth').mean()
+    mean_flux = np.nanmean(mean_flux_by_depth, 1)
+    std_flux = np.nanstd(mean_flux_by_depth, 1)
+    
+    return mean_flux_by_depth, mean_flux, std_flux
 
-# Round the depth values to the nearest multiple of bin_size
-rounded_depth_repeat = np.round(depth158 / bin_size) * bin_size
-# Add the rounded depth values as a new column to FLUX_event1
-FLUX_event1['Rounded_Depth'] = rounded_depth_repeat
+# Calculate statistics for event 1
+mean_flux_by_depth1, mean_flux1, std_flux1 = calculate_flux_stats(flux_data, mask_data, 1)
+yerr1_0, yerr1_1 = mean_flux1 - std_flux1, mean_flux1 + std_flux1
 
-
-# Calculate the mean based on the depth groups
-mean_flux_by_depth1 = FLUX_event1.groupby('Rounded_Depth').mean()
-
-# If you want to print or display the mean values
-print(mean_flux_by_depth1)
-
-mean_flux1=np.nanmean(mean_flux_by_depth1,1)
-std_flux1=np.nanstd(mean_flux_by_depth1,1)
-
-yerr1_0=mean_flux1-std_flux1
-yerr1_1=mean_flux1+std_flux1
-
-
-#estimate event number 2
-FLUX_event2=M158_Cflux.copy(deep=True)
-FLUX_event2[mask!=2]=np.nan
-
-
+# Calculate statistics for event 2
+FLUX_event2 = flux_data.copy(deep=True)
+FLUX_event2[mask_data != 2] = np.nan
+rounded_depth_repeat = np.round(depth_array / BIN_SIZE) * BIN_SIZE
 FLUX_event2['Rounded_Depth'] = rounded_depth_repeat
 
 
-
-# Condition to filter rows where Rounded_Depth is -750
+# Filter outliers at depth ~750m for event 2
 condition = (FLUX_event2['Rounded_Depth'] <= -700) & (FLUX_event2['Rounded_Depth'] >= -800)
+for column in range(100):
+    FLUX_event2.loc[condition & (FLUX_event2[str(column)] > 50), str(column)] = np.nan
 
-
-# Iterate through columns from '0' to '99' and replace values with NaN if flux > 50
-for column in range(100):  # Assuming columns are named from '0' to '99'
-    FLUX_event2.loc[condition & (FLUX_event2[str(column)] > 50), str(column)] = None  # Replace with np.nan if not None
-
-print(FLUX_event2)
-
-# Calculate the mean based on the depth groups
+# Calculate statistics for event 2
 mean_flux_by_depth2 = FLUX_event2.groupby('Rounded_Depth').mean()
+mean_flux2 = np.nanmean(mean_flux_by_depth2, 1)
+std_flux2 = np.nanstd(mean_flux_by_depth2, 1)
+yerr2_0, yerr2_1 = mean_flux2 - std_flux2, mean_flux2 + std_flux2
 
+# Calculate statistics for between events
+mean_flux_by_depth3, mean_flux_between, std_flux_between = calculate_flux_stats(flux_data, mask_data, 0)
+yerr3_0, yerr3_1 = mean_flux_between - std_flux_between, mean_flux_between + std_flux_between
 
-mean_flux2=np.nanmean(mean_flux_by_depth2,1)
-std_flux2=np.nanstd(mean_flux_by_depth2,1)
-
-yerr2_0=mean_flux2-std_flux2
-yerr2_1=mean_flux2+std_flux2
-
-
-#estimate between two events
-#put 0 instead of nan
-FLUX_between_event=M158_Cflux.copy(deep=True)
-FLUX_between_event[mask!=0]=np.nan
-
-#FLUX_between_event[(time_repeat<18850)]=np.nan
-FLUX_between_event['Rounded_Depth'] = rounded_depth_repeat
-
-# Calculate the mean based on the depth groups
-mean_flux_by_depth3 = FLUX_between_event.groupby('Rounded_Depth').mean()
-
-mean_flux_between=np.nanmean(mean_flux_by_depth3,1)
-std_flux_between=np.nanstd(mean_flux_by_depth3,1)
-
-yerr3_0=mean_flux_between-std_flux_between
-yerr3_1=mean_flux_between+std_flux_between
-
-
-depth_unique=np.unique(rounded_depth_repeat)
+# Get unique depth values
+depth_unique = np.unique(rounded_depth_repeat)
 
 
 
-P_values=np.zeros((mean_flux_by_depth3.shape[0],1))
-# Lists to store significance markers
+# Statistical analysis
+P_values = np.zeros((mean_flux_by_depth3.shape[0], 1))
 significance_markers = []
 positions = []
-tukey_results= []
+tukey_results = []
 
-
-from scipy.stats import f_oneway
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
-# Initialize variables
+# Initialize variables for ANOVA
 num_rows = mean_flux_by_depth3.shape[0]
 alpha = 0.07
 
@@ -196,27 +154,24 @@ grouped_tukey_table = tukey_pairwise_table.groupby(['group1', 'group2'], as_inde
 print("\nGrouped Tukey Pairwise Results Table:")
 print(grouped_tukey_table)
 
-#martin curve
+# Fit Martin curve to event 2 data
+z = 100  # Reference depth
+d = depth_unique[depth_unique < 0]
+f = mean_flux2[depth_unique < 0]
 
-
-from sklearn.linear_model import LinearRegression
-z=100
-#plor loglog transformed data to check fit
-d=depth_unique[depth_unique<0]
-f=mean_flux2[depth_unique<0]
-
-# Create a linear regression model
+# Linear regression on log-transformed data
 model = LinearRegression()
-
-# Fit the model
-x=np.log(-d/z).reshape(-1, 1)
-y=np.log(f)
-model.fit(x,y)
-
-y_pred = np.exp((model.predict(x)))
+x = np.log(-d / z).reshape(-1, 1)
+y = np.log(f)
+model.fit(x, y)
+y_pred = np.exp(model.predict(x))
 
 
-#now I want to plot the profiles, with 
+# Define colors to match the original figure
+COLOR_EVENT1 = 'tab:blue'    # Blue for event 1
+COLOR_EVENT2 = 'tab:red'     # Red for event 2
+COLOR_BETWEEN = 'tab:green'  # Green for out-between
+COLOR_MARTIN = 'black'       # Black for Martin curve
 
 # Plotting
 fig, axs = plt.subplots(2, 2, figsize=(7, 8), sharex=False, gridspec_kw={'width_ratios': [3, 1],'height_ratios': [2, 2]})
@@ -227,17 +182,17 @@ fig, axs = plt.subplots(2, 2, figsize=(7, 8), sharex=False, gridspec_kw={'width_
 # Plot for the first subplot [-70, 0]
 ax1 = axs[0,0]
 ## plot the profiles
-p1=ax1.plot(mean_flux1,depth_unique,'b', label='ev1') 
-ax1.fill_betweenx(depth_unique,yerr1_1,yerr1_0, color='C0', alpha=0.1)
+p1=ax1.plot(mean_flux1,depth_unique, color=COLOR_EVENT1, label='ev1') 
+ax1.fill_betweenx(depth_unique,yerr1_1,yerr1_0, color=COLOR_EVENT1, alpha=0.1)
 ax1.set_ylim(-100, 0)
 ax1.set_xlim(0, 200)  # Adjust as needed
 #flux 2
-p2=ax1.plot(mean_flux2,depth_unique,'r', label='ev2')
-ax1.fill_betweenx(depth_unique,yerr2_1,yerr2_0, color='r', alpha=0.1)
+p2=ax1.plot(mean_flux2,depth_unique, color=COLOR_EVENT2, label='ev2')
+ax1.fill_betweenx(depth_unique,yerr2_1,yerr2_0, color=COLOR_EVENT2, alpha=0.1)
 
 #flux 3
-p3=ax1.plot(mean_flux_between,depth_unique,'g', label='outside-between')
-ax1.fill_betweenx(depth_unique,yerr3_1,yerr3_0, color='g', alpha=0.1)
+p3=ax1.plot(mean_flux_between,depth_unique, color=COLOR_BETWEEN, label='outside-between')
+ax1.fill_betweenx(depth_unique,yerr3_1,yerr3_0, color=COLOR_BETWEEN, alpha=0.1)
 ax1.set_ylabel('Depth (m)', fontsize=10)
 ax1.tick_params(axis='x', labelsize=10)  # Add this line for x-ticks
 ax1.tick_params(axis='y', labelsize=10)  # Add this line for y-ticks
@@ -250,31 +205,28 @@ ax1.set_xlim(0, 200)  # Set independent x-limits
 ax2 = axs[1,0]
 
 ## plot the profiles
-p1=ax2.plot(mean_flux1,depth_unique,'b', label='ev1') 
-ax2.fill_between(depth_unique,yerr1_1,yerr1_0, color='C0', alpha=0.1)
+p1=ax2.plot(mean_flux1,depth_unique, color=COLOR_EVENT1, label='ev1') 
+ax2.fill_betweenx(depth_unique,yerr1_1,yerr1_0, color=COLOR_EVENT1, alpha=0.1)
 ax2.set_ylim(-2000, -100)
 ax2.set_xlim(0, 50)  # Adjust as needed
 
 #flux 2
-p2=ax2.plot(mean_flux2,depth_unique,'r', label='ev2')
-ax2.fill_betweenx(depth_unique,yerr2_1,yerr2_0, color='r', alpha=0.1)
+p2=ax2.plot(mean_flux2,depth_unique, color=COLOR_EVENT2, label='ev2')
+ax2.fill_betweenx(depth_unique,yerr2_1,yerr2_0, color=COLOR_EVENT2, alpha=0.1)
 
 #flux 3
-p3=ax2.plot(mean_flux_between,depth_unique,'g', label='out-betw')
-ax2.fill_betweenx(depth_unique,yerr3_1,yerr3_0, color='g', alpha=0.1)
+p3=ax2.plot(mean_flux_between,depth_unique, color=COLOR_BETWEEN, label='out-betw')
+ax2.fill_betweenx(depth_unique,yerr3_1,yerr3_0, color=COLOR_BETWEEN, alpha=0.1)
 
-p4=ax2.plot(y_pred,d,'k', label='Martin curve')
+p4=ax2.plot(y_pred,d, color=COLOR_MARTIN, label='Martin curve')
 
 
 ax2.legend(fontsize=7)
 ax2.set_ylabel('Depth (m)', fontsize=10)
-ax2.set_xlabel('Carbon flux (mgC m$^{-3}$)', fontsize=10)
-ax2.tick_params(axis='x', labelsize=10)  # Add this line for x-ticks
-ax2.tick_params(axis='y', labelsize=10)  # Add this line for y-ticks
-ax2.text(-0.2, 1, '(b)', transform=ax2.transAxes,fontsize=10, fontweight='bold', va='top', ha='right')
-
-
-
+ax2.set_xlabel('Carbon flux (mg C m$^{-2}$ day$^{-1}$)', fontsize=10)
+ax2.tick_params(axis='x', labelsize=10)
+ax2.tick_params(axis='y', labelsize=10)
+ax2.text(-0.2, 1, '(b)', transform=ax2.transAxes, fontsize=10, fontweight='bold', va='top', ha='right')
 
 
 
@@ -384,18 +336,16 @@ ax4.set_ylim(0, 95)  # Adjust the values as needed
 
 
 
-# Adjust layout to make the size of the third and fourth plots the same as the first two plots
+# Adjust layout
 plt.tight_layout(pad=1.5)
 
+# Save figure to requested absolute folder
+SAVE_DIR = Path("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/")
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
+fig_path = SAVE_DIR / "Fig_04.png"
+plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+print(f"\nFigure saved to: {fig_path}")
 
-
-
-
-
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/" )
-fig_name_pdf = ("Fig_04_ver03" + ".png")
-plt.savefig(fig_name_pdf, dpi=300,bbox_inches="tight")
-
-
-plt.close()
+# Show figure
+plt.show()
 
