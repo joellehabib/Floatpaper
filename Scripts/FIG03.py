@@ -6,25 +6,19 @@ os.environ['PROJ_LIB'] = '/Users/joellehabib/anaconda3/pkgs/proj-8.2.1-hd69def0_
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from datetime import timedelta
-import xarray as xr
+from datetime import datetime, timedelta
 import cmocean
 import matplotlib.dates as mdates
-from pathlib import Path
 
-cm=cmocean.cm.balance
+cm = cmocean.cm.balance
 
 def contour_levels_func(min_contour_level, max_contour_level, levels):
     """Function to define contour levels for contourf"""
-    distance_levels = max_contour_level / levels
-    contour_levels = np.arange(min_contour_level, max_contour_level, distance_levels)
-    return contour_levels
+    return np.linspace(min_contour_level, max_contour_level, levels)
 
 
 def nonlinear_colormap():
     import pylab as pyl
-    #import numpy as np
     levels1 = [0, 1, 2]
 
     ####################################################################
@@ -41,7 +35,6 @@ def nonlinear_colormap():
     """
 
     from matplotlib.colors import LinearSegmentedColormap
-
 
     class nlcmap(LinearSegmentedColormap):
         """Nonlinear colormap.
@@ -73,10 +66,8 @@ def nonlinear_colormap():
             yi = np.interp(xi, self._x, self._y)
             return self.cmap(yi, alpha)
 
-
     cmap_nonlin = nlcmap(pyl.cm.CMRmap, levels1)
     return cmap_nonlin
-
 
 
 cm1 = nonlinear_colormap()
@@ -124,7 +115,7 @@ contour_levels = contour_levels_func(min_contour_level, max_contour_level, level
 jet = plt.get_cmap('BrBG')
 
 width, height = 0.8, 0.7
-fig = plt.figure(1, figsize=(3,5))
+fig = plt.figure(1, figsize=(5, 8))
 ax=fig.add_subplot(615)
 p1 = plt.contourf(real_dates, depth158 ,M158_Cflux, contour_levels, cmap=cm1, alpha=1,extend='both')
 
@@ -139,12 +130,10 @@ ax.set_ylabel('Depth (m)', fontsize=7)
 
 #colorbar
 cbar = plt.colorbar(p1)
-cbar.ax.set_ylabel('C flux \n (mgC m$^{-3}$)', fontsize=5)
+cbar.ax.set_ylabel('C flux \n (mgC m$^{-2}$ day$^{-1}$)', fontsize=5)
 cbar.ax.tick_params(labelsize=7) 
 cbar.ax.locator_params(nbins=5)
-
-for p1 in p1.collections:
-    p1.set_rasterized(True)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}'))
 
 
 
@@ -169,9 +158,10 @@ ax.text(-0.2, 1.15, '(f)', transform=ax.transAxes,fontsize=7, fontweight='bold',
 ax.set_ylabel('Depth (m)', fontsize=7)
 #colorbar
 cbar = plt.colorbar(p1)
-cbar.ax.set_ylabel('Cflux \n anomaly \n (mgC m$^{-3}$)', fontsize=5)
+cbar.ax.set_ylabel('C flux \n anomaly \n (mgC m$^{-2}$ day$^{-1}$)', fontsize=5)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}')) 
 
 # from matplotlib.dates import DateFormatter
 # # Define the date format
@@ -182,11 +172,6 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %y')) # %d
 
 
 plt.xticks(rotation=90,fontsize=7)
-
-
-    
-for p1 in p1.collections:
-    p1.set_rasterized(True)
 
 
 
@@ -212,12 +197,9 @@ ax.set_ylabel('Depth (m)', fontsize=7)
 cbar = plt.colorbar(p1)
 cbar.ax.set_ylabel('Mip \n (# L$^{-1}$)', fontsize=5)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}'))
 ax.get_xaxis().set_ticklabels([])
-
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-
 
 
 ### anomaly 1
@@ -241,15 +223,9 @@ ax.set_ylabel('Depth (m)', fontsize=7)
 cbar = plt.colorbar(p1)
 cbar.ax.set_ylabel('Mip \n anomaly \n (# L$^{-1}$)', fontsize=5)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}'))
 ax.get_xaxis().set_ticklabels([])
-
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-
-
-
-
 
 
 
@@ -282,6 +258,7 @@ cbar = plt.colorbar(p1)
 cbar.ax.set_ylabel('Map \n  (# L$^{-1}$)', fontsize=5)
 cbar.ax.tick_params(labelsize=7) 
 cbar.ax.locator_params(nbins=5)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}'))
 
 for p1 in p1.collections:
     p1.set_rasterized(True)
@@ -308,7 +285,8 @@ ax.set_ylabel('Depth (m)', fontsize=7)
 cbar = plt.colorbar(p1)
 cbar.ax.set_ylabel('Map \n anomaly  \n (# L$^{-1}$)', fontsize=5)
 cbar.ax.locator_params(nbins=5)
-cbar.ax.tick_params(labelsize=7) 
+cbar.ax.tick_params(labelsize=7)
+cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}' if x % 1 else f'{int(x)}'))
 ax.get_xaxis().set_ticklabels([])
 
 #eqution 2, 2 sinking speed 
@@ -340,16 +318,15 @@ line_3=lon158_2[60:87]
 Y3=-30*line_3+b
 plt.plot(line_3, Y3,'b')
 
+plt.tight_layout()
 
+# Save figure
+save_dir = "/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/"
+fig_name = "Fig03.png"
+save_path = save_dir + fig_name
+print(f"Saving figure to: {save_path}")
+plt.savefig(save_path, dpi=300, bbox_inches="tight")
+print("Figure saved successfully!")
+plt.show()
 
-for p1 in p1.collections:
-    p1.set_rasterized(True)
-
-
-    
-os.chdir("/Users/joellehabib/GIT/TRATLEQ/Plots/Article_float/new_version_052024/" )
-fig_name_pdf = ("Fig03" + ".png")
-plt.savefig(fig_name_pdf,dpi=300,bbox_inches="tight")
-
-
-mean_flux_between=np.nanmean(M158_Map,1)
+mean_flux_between = np.nanmean(M158_Map, 1)
